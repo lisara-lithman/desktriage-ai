@@ -1,6 +1,6 @@
 import os
 import jwt
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from bcrypt import hashpw, gensalt, checkpw
 from dotenv import load_dotenv  
 

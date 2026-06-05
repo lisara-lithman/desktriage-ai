@@ -23,7 +23,7 @@ async def register(user_data: UserRegisterSchema):
         "email": user_data.email,
         "password_hash": scrambled_password, # Aligned naming key
         "phone_number": user_data.phone_number,
-        "role": user_data.role # Uses the default 'employee' or whatever comes from schema
+        "role": "user"
     }  
 
     # 4. Insert the new user document into the database

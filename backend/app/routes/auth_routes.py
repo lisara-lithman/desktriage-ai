@@ -15,16 +15,17 @@ async def register(user_data: UserRegisterSchema):
     # 2. Scramble the raw text password string
     scrambled_password = hash_password(user_data.password)
 
-    # 3. Create a new user document (FIXED: Using 'password_hash' key consistently)
+    # 3. Create a new user document
     new_user = {
-        "first_name": user_data.first_name,
-        "last_name": user_data.last_name,
-        "username": user_data.username,
-        "email": user_data.email,
-        "password_hash": scrambled_password, # Aligned naming key
-        "phone_number": user_data.phone_number,
-        "role": "user"
-    }  
+        "first_name":    user_data.first_name,
+        "last_name":     user_data.last_name,
+        "username":      user_data.username,
+        "email":         user_data.email,
+        "password_hash": scrambled_password,
+        "phone_number":  user_data.phone_number,
+        "role":          "user",
+        "department":    None,
+    }
 
     # 4. Insert the new user document into the database
     result = await db.users.insert_one(new_user)
@@ -40,19 +41,24 @@ async def login(login_data: UserLoginSchema):
     user = await db.users.find_one({"email": login_data.email})
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
-    
-    # 2. Verify the provided password against the stored hashed password (FIXED: matching 'password_hash')
+
+    # 2. Verify the provided password against the stored hashed password
     if not verify_password(login_data.password, user["password_hash"]):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
 
-    # 3. Create security passport token
-    token = create_access_token({"username": user["username"], "role": user["role"]})
-    
+    # 3. Create JWT token — include username, role, email, and department
+    token = create_access_token({
+        "username":   user["username"],
+        "role":       user["role"],
+        "email":      user["email"],
+        "department": user.get("department"),
+    })
+
     return {
         "access_token": token,
-        "token_type": "bearer",
-        "role": user["role"],
-        "username": user["username"]
+        "token_type":   "bearer",
+        "role":         user["role"],
+        "username":     user["username"],
+        "email":        user["email"],
+        "department":   user.get("department"),
     }
-
-    

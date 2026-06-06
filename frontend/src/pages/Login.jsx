@@ -5,7 +5,7 @@ import { useNavigate, Link } from 'react-router-dom';
 export default function Login() {
   const navigate = useNavigate();
   const [credentials, setCredentials] = useState({ email: '', password: '' });
-  const [error, setError]     = useState('');
+  const [error,   setError]   = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleChange = (e) =>
@@ -18,13 +18,17 @@ export default function Login() {
 
     try {
       const response = await axios.post('http://127.0.0.1:8000/api/auth/login', credentials);
+      const { access_token, role, username, email, department } = response.data;
 
-      const { access_token, role, username } = response.data;
-      localStorage.setItem('token',    access_token);
-      localStorage.setItem('role',     role);
-      localStorage.setItem('username', username);
+      // Persist session data
+      localStorage.setItem('token',      access_token);
+      localStorage.setItem('role',       role);
+      localStorage.setItem('username',   username);
+      localStorage.setItem('email',      email);
+      localStorage.setItem('department', department || '');
 
-      if (role === 'admin') {
+      // Route based on role
+      if (role === 'admin_global' || role === 'admin_dept') {
         navigate('/admin-dashboard');
       } else {
         navigate('/employee-dashboard');

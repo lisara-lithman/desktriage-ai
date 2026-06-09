@@ -1,13 +1,21 @@
 from pydantic import BaseModel, Field
 from typing import Optional
 
+
 class TicketCreateSchema(BaseModel):
-    title:       str = Field(..., example="Cannot connect to corporate VPN")
-    description: str = Field(..., example="My access token expired this morning and I am locked out.")
-    department:  str = Field(..., example="IT_Support")   # Chosen from frontend dropdown
-    priority:    str = Field(..., example="High")          # Chosen from frontend dropdown
+    """
+    Schema for employee ticket submission.
+    Department and priority are intentionally omitted — the AI model
+    predicts them automatically from the title and description.
+    """
+    title:       str = Field(..., min_length=5,  max_length=200,  example="Cannot connect to corporate VPN")
+    description: str = Field(..., min_length=10, max_length=5000, example="My access token expired this morning and I am locked out.")
 
 
 class AdminReplySchema(BaseModel):
-    admin_reply: str = Field(..., example="We have reset your VPN token. Please try again.")
-    status:      str = Field(..., example="Resolved")  # In_Progress | Resolved | Closed
+    """
+    Schema for admin confirming and sending a reply to the employee.
+    The admin may edit the AI-generated draft before confirming.
+    """
+    admin_reply: str = Field(..., min_length=1, example="We have reset your VPN token. Please try again.")
+    status:      str = Field(..., example="Resolved")   # In_Progress | Resolved | Closed

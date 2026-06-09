@@ -60,3 +60,6 @@ htmlcov/
 *.bak
 *.tmp
 Thumbs.db
+
+# Large AI model folders and adapters
+backend/m5_adapters_8b/

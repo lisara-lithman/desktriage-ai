@@ -63,3 +63,6 @@ Thumbs.db
 
 # Large AI model folders and adapters
 backend/m5_adapters_8b/
+
+# Local Vector Database
+backend/rag_engine/chroma_db/

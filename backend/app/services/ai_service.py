@@ -44,6 +44,13 @@ SYSTEM_PROMPT = (
     "Do not include any introductory sentences, markdown blocks, or conversational filler."
 )
 
+SYSTEM_PROMPT_WITH_CONTEXT = (
+    "You are an expert corporate triage assistant. Analyze the employee's issue using the provided Corporate SOPs context. "
+    "In your draft reply, you MUST provide the specific troubleshooting steps, commands, or URLs described in the context. "
+    "Return a valid JSON object containing department, priority, and llm_draft_reply. "
+    "Do not include any introductory sentences, markdown blocks, or conversational filler."
+)
+
 
 def load_model() -> None:
     """
@@ -88,16 +95,21 @@ def _run_warm_up() -> None:
         logger.warning(f"⚠️  Warm-up failed (non-fatal): {exc}")
 
 
-def _build_prompt(title: str, description: str) -> str:
+def _build_prompt(title: str, description: str, context: str = "") -> str:
     """
-    Construct the exact ChatML prompt format the model was fine-tuned on.
-    Mirrors the chatml_formatted_string from generate_dataset.py.
+    Construct the exact ChatML prompt format the model was fine-tuned on,
+    with optional retrieval-augmented context.
     """
-    user_message = f"Title: {title}\n\n{description}"
+    if context:
+        user_message = f"Context from Corporate SOPs:\n{context}\n\nEmployee Issue:\nTitle: {title}\n\n{description}"
+        system_prompt = SYSTEM_PROMPT_WITH_CONTEXT
+    else:
+        user_message = f"Title: {title}\n\n{description}"
+        system_prompt = SYSTEM_PROMPT
 
     return (
         "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n"
-        f"{SYSTEM_PROMPT}<|eot_id|>"
+        f"{system_prompt}<|eot_id|>"
         f"<|start_header_id|>user<|end_header_id|>\n\n{user_message}<|eot_id|>"
         "<|start_header_id|>assistant<|end_header_id|>\n\n"
     )
@@ -222,7 +234,32 @@ def generate_triage(title: str, description: str) -> dict:
         return FALLBACK_RESULT.copy()
 
     try:
-        prompt = _build_prompt(title, description)
+        # Retrieve relevant policy documents to augment prompt
+        try:
+            from rag_engine.retriever import retrieve_context
+            retrieved = retrieve_context(f"{title} {description}")
+            context = retrieved.get("context", "")
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to retrieve context: {e}")
+            context = ""
+
+        prompt = _build_prompt(title, description, context)
+
+        # Diagnostics: Write request details, retrieved context, and constructed prompt to a local log file
+        try:
+            from datetime import datetime
+            debug_log_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "triage_debug.log")
+            with open(debug_log_path, "a", encoding="utf-8") as f:
+                f.write(f"\n===================================================\n")
+                f.write(f"TIME: {datetime.now().isoformat()}\n")
+                f.write(f"TICKET TITLE: {title}\n")
+                f.write(f"TICKET DESCRIPTION: {description}\n")
+                f.write(f"RETIRED CONTEXT LENGTH: {len(context)}\n")
+                f.write(f"RETIRED CONTEXT:\n{context}\n")
+                f.write(f"FULL PROMPT SENT TO LLM:\n{prompt}\n")
+                f.write(f"===================================================\n")
+        except Exception as log_err:
+            logger.warning(f"⚠️ Failed to write diagnostics to triage_debug.log: {log_err}")
 
         from mlx_lm import generate
         raw_output = generate(

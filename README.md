@@ -121,13 +121,14 @@ The interface is built with dark-mode styling, glowing gradient indicators, and 
 ### 1. Employee Ticket Submission
 *The employee submits a ticket using informal language and typos (e.g., "paternity leaf" or "direct deposit deets").*
 ```text
-[Insert Screenshot of ticket submission screen here, e.g. /images/submission.png]
+[<img width="2464" height="612" alt="image" src="https://github.com/user-attachments/assets/1285a0e8-01e0-4761-9acd-0775ae4566c3" />
+
 ```
 
 ### 2. Admin Triage View (Human Resources Queue)
 *The system successfully routes the ticket containing "paternity leaf" and "HR portal" to the Human Resources department, marks it Critical, and pre-fills the RAG-assisted draft reply with browser session recovery steps.*
 ```text
-[Insert Screenshot of Admin HR ticket detail here, e.g. /images/hr_ticket.png]
+
 ```
 
 ### 3. Admin Triage View (Finance Queue)

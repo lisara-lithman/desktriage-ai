@@ -21,8 +21,8 @@ from typing import Tuple, Optional, Dict, Any
 # Target model details
 BASE_MODEL = "mlx-community/Meta-Llama-3.1-8B-Instruct-4bit"
 ADAPTER_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../m5_adapters_8b"))
-DATASET_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../data/train_dataset.jsonl"))
-NUM_TEST_SAMPLES = 15  # Adjust as needed for speed vs precision
+DATASET_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../data/eval_dataset.jsonl"))
+NUM_TEST_SAMPLES = 30  # Adjust as needed for speed vs precision
 
 SYSTEM_PROMPT = (
     "You are an expert corporate triage assistant. Analyze the employee's issue "

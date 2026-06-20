@@ -20,8 +20,8 @@ from typing import Tuple, Optional, Dict, Any
 
 # Target model details
 BASE_MODEL = "mlx-community/Meta-Llama-3.1-8B-Instruct-4bit"
-ADAPTER_PATH = "./m5_adapters_8b"
-DATASET_PATH = "train_dataset.jsonl"
+ADAPTER_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../m5_adapters_8b"))
+DATASET_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../data/train_dataset.jsonl"))
 NUM_TEST_SAMPLES = 15  # Adjust as needed for speed vs precision
 
 SYSTEM_PROMPT = (
@@ -205,7 +205,7 @@ def main():
     ft_metrics = evaluate_model(ft_model, ft_tokenizer, test_data, "Fine-Tuned (adapters)")
 
     # 4. Generate beautiful Markdown report
-    report_path = "evaluation_report.md"
+    report_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../evaluation_report.md"))
     print(f"\n📝 Writing evaluation report to '{report_path}'...")
     
     with open(report_path, "w", encoding="utf-8") as f:

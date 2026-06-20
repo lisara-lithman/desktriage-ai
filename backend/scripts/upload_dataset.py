@@ -2,7 +2,7 @@ import os
 from datasets import load_dataset
 
 # Absolute path to your JSONL dataset
-JSONL_PATH = "/Users/lisara/Documents/desktriage-ai/backend/train_dataset.jsonl"
+JSONL_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../data/train_dataset.jsonl"))
 
 # Your exact case-sensitive Hugging Face destination
 TARGET_REPO = "Lisara/desktriage-dataset"

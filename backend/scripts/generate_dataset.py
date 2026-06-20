@@ -70,7 +70,7 @@ def build_dynamic_prompt(batch_size: int) -> str:
 # ─── 3. PIPELINE REPETITION WORKER LOOP ───
 def run_dataset_generation_pipeline(total_target: int = 1000, batch_size: int = 10):
     iterations = total_target // batch_size
-    output_path = "train_dataset.jsonl"
+    output_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../data/train_dataset.jsonl"))
     
     print(f"🚀 Launching Synthetic Assembly Factory. Target: {total_target} rows via {iterations} loops...")
     

@@ -11,7 +11,7 @@ from bcrypt import hashpw, gensalt
 from dotenv import load_dotenv
 
 # Load configuration values from the local environment block
-load_dotenv()
+load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "../.env"))
 
 MONGODB_URI = os.getenv("MONGODB_URI")
 if not MONGODB_URI:

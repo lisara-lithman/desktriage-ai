@@ -1,7 +1,7 @@
 import os
 import chromadb
 from chromadb.utils import embedding_functions
-from rag_engine.config import logger, DB_PATH, EMBEDDING_MODEL_NAME
+from rag_engine.config import logger, DB_PATH, EMBEDDING_MODEL_NAME, DISTANCE_THRESHOLD
 
 # Singleton references
 _chroma_client = None
@@ -33,9 +33,10 @@ def _get_collection():
         logger.error(f"⚠️ Failed to connect to ChromaDB collection: {e}")
         return None
 
-def retrieve_context(query: str, n_results: int = 2) -> dict:
+def retrieve_context(query: str, n_results: int = 2, distance_threshold: float = DISTANCE_THRESHOLD) -> dict:
     """
     Queries ChromaDB for similar document chunks.
+    Filters results by distance_threshold to reject irrelevant chunks.
     
     Returns:
         dict: A dictionary containing:
@@ -61,17 +62,31 @@ def retrieve_context(query: str, n_results: int = 2) -> dict:
             return fallback_result
             
         documents = results["documents"][0]
+        distances = results["distances"][0] if results.get("distances") else [0.0] * len(documents)
         metadatas = results["metadatas"][0] if results.get("metadatas") else []
-        sources = [meta.get("source", "Unknown") for meta in metadatas]
         
-        logger.info(f"📚 Retrieved {len(documents)} context chunks from ChromaDB.")
-        for idx, source in enumerate(sources):
-            logger.info(f"   Chunk {idx} source: {source}")
+        filtered_docs = []
+        filtered_sources = []
+        
+        for doc, dist, meta in zip(documents, distances, metadatas):
+            if distance_threshold is None or dist <= distance_threshold:
+                filtered_docs.append(doc)
+                filtered_sources.append(meta.get("source", "Unknown"))
+            else:
+                logger.info(f"⏭️ Skipping chunk with distance {dist:.4f} (exceeds threshold {distance_threshold})")
+        
+        if filtered_docs:
+            logger.info(f"📚 Retrieved {len(filtered_docs)} relevant context chunks (filtered from {len(documents)} total).")
+            for idx, source in enumerate(filtered_sources):
+                logger.info(f"   Chunk {idx} source: {source}")
+        else:
+            logger.info(f"⏭️ No context chunks met the distance threshold of {distance_threshold}.")
             
         return {
-            "context": "\n\n".join(documents),
-            "sources": sources
+            "context": "\n\n".join(filtered_docs),
+            "sources": filtered_sources
         }
     except Exception as e:
         logger.error(f"⚠️ Error querying ChromaDB retriever: {e}")
         return fallback_result
+

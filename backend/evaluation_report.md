@@ -13,7 +13,7 @@ This report documents the performance comparison between the raw baseline model 
 | Department Classification Accuracy | 100.0% | 100.0% | **+0.0%** |
 | Priority Classification Accuracy | 40.0% | 60.0% | **+20.0%** |
 | Perfect Triage Match (Strict + Correct) | 40.0% | 60.0% | **+20.0%** |
-| Average Generation Latency | 4.2s | 3.0s | **-1.25s** |
+| Average Generation Latency | 4.2s | 2.9s | **-1.36s** |
 | Average Output Character Length | 448.2 chars | 258.9 chars | **-189.30 chars** |
 
 

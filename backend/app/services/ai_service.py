@@ -29,6 +29,10 @@ _tokenizer = None
 BASE_MODEL    = os.getenv("MLX_BASE_MODEL", "mlx-community/Meta-Llama-3.1-8B-Instruct-4bit")
 ADAPTER_PATH  = os.getenv("MLX_ADAPTER_PATH", "./m5_adapters_8b")
 
+# ── Modal Cloud Inference Settings ──────────────────────────────────────────
+USE_MODAL_INFERENCE = os.getenv("USE_MODAL_INFERENCE", "false").lower() == "true"
+MODAL_ENDPOINT_URL  = os.getenv("MODAL_ENDPOINT_URL", "")
+
 # ── Safe fallback if model fails to classify ─────────────────────────────────
 FALLBACK_RESULT = {
     "department":    "IT_Support",
@@ -59,6 +63,10 @@ def load_model() -> None:
     Subsequent calls are no-ops (idempotent guard).
     """
     global _model, _tokenizer
+
+    if USE_MODAL_INFERENCE:
+        logger.info("☁️ Using Modal inference endpoint — skipping local model load to save RAM.")
+        return
 
     if _model is not None:
         logger.info("AI model already loaded — skipping duplicate load.")
@@ -178,7 +186,7 @@ def _validate_and_normalise(parsed: dict) -> dict:
     Ensures only known department/priority values are accepted.
     Falls back to safe defaults for invalid values.
     """
-    VALID_DEPARTMENTS = {"IT_Support", "Finance", "HR"}
+    VALID_DEPARTMENTS = {"IT_Support", "Corporate_Finance", "HR_Operations"}
     VALID_PRIORITIES  = {"Low", "Medium", "High", "Critical"}
 
     department    = parsed.get("department", "IT_Support")
@@ -189,9 +197,9 @@ def _validate_and_normalise(parsed: dict) -> dict:
     if department not in VALID_DEPARTMENTS:
         dept_lower = department.lower()
         if "finance" in dept_lower:
-            department = "Finance"
+            department = "Corporate_Finance"
         elif "hr" in dept_lower or "human" in dept_lower:
-            department = "HR"
+            department = "HR_Operations"
         else:
             department = "IT_Support"
 
@@ -229,38 +237,62 @@ def generate_triage(title: str, description: str) -> dict:
 
     Never raises — always returns a safe dict so tickets are never lost.
     """
-    if _model is None:
-        logger.warning("⚠️  Model not loaded. Returning fallback triage result.")
-        return FALLBACK_RESULT.copy()
-
+    # 1. First, retrieve the augmented context from RAG (same for both local and cloud)
     try:
-        # Retrieve relevant policy documents to augment prompt
+        from rag_engine.retriever import retrieve_context
+        retrieved = retrieve_context(f"{title} {description}")
+        context = retrieved.get("context", "")
+    except Exception as e:
+        logger.warning(f"⚠️ Failed to retrieve context: {e}")
+        context = ""
+    prompt = _build_prompt(title, description, context)
+    # 2. Write diagnostics log (same as before)
+    try:
+        from datetime import datetime
+        debug_log_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "triage_debug.log")
+        with open(debug_log_path, "a", encoding="utf-8") as f:
+            f.write(f"\n===================================================\n")
+            f.write(f"TIME: {datetime.now().isoformat()}\n")
+            f.write(f"TICKET TITLE: {title}\n")
+            f.write(f"TICKET DESCRIPTION: {description}\n")
+            f.write(f"RETIRED CONTEXT LENGTH: {len(context)}\n")
+            f.write(f"RETIRED CONTEXT:\n{context}\n")
+            f.write(f"FULL PROMPT SENT TO LLM:\n{prompt}\n")
+            f.write(f"===================================================\n")
+    except Exception as log_err:
+        logger.warning(f"⚠️ Failed to write diagnostics to triage_debug.log: {log_err}")
+    # 3. Choose path: Cloud (Modal) vs. Local (MLX)
+    if USE_MODAL_INFERENCE:
         try:
-            from rag_engine.retriever import retrieve_context
-            retrieved = retrieve_context(f"{title} {description}")
-            context = retrieved.get("context", "")
-        except Exception as e:
-            logger.warning(f"⚠️ Failed to retrieve context: {e}")
-            context = ""
-
-        prompt = _build_prompt(title, description, context)
-
-        # Diagnostics: Write request details, retrieved context, and constructed prompt to a local log file
-        try:
-            from datetime import datetime
-            debug_log_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "triage_debug.log")
-            with open(debug_log_path, "a", encoding="utf-8") as f:
-                f.write(f"\n===================================================\n")
-                f.write(f"TIME: {datetime.now().isoformat()}\n")
-                f.write(f"TICKET TITLE: {title}\n")
-                f.write(f"TICKET DESCRIPTION: {description}\n")
-                f.write(f"RETIRED CONTEXT LENGTH: {len(context)}\n")
-                f.write(f"RETIRED CONTEXT:\n{context}\n")
-                f.write(f"FULL PROMPT SENT TO LLM:\n{prompt}\n")
-                f.write(f"===================================================\n")
-        except Exception as log_err:
-            logger.warning(f"⚠️ Failed to write diagnostics to triage_debug.log: {log_err}")
-
+            import requests # Make sure you have the 'requests' library installed
+            
+            logger.info(f"Sending classification request to Modal API: {MODAL_ENDPOINT_URL}")
+            
+            # Send HTTP request to the Modal app URL
+            response = requests.post(
+                MODAL_ENDPOINT_URL,
+                json={"prompt": prompt},
+                timeout=120 # 45 seconds to account for possible cold start
+            )
+            response.raise_for_status()
+            
+            raw_output = response.json().get("result", "").strip()
+            logger.debug(f"Raw Modal model output: {raw_output[:300]}")
+            parsed = _parse_json_output(raw_output)
+            if parsed is None:
+                logger.warning(f"⚠️ Could not parse JSON from Modal output: {raw_output[:200]}")
+                fallback = FALLBACK_RESULT.copy()
+                fallback["ai_draft_reply"] = raw_output
+                return fallback
+            return _validate_and_normalise(parsed)
+        except Exception as exc:
+            logger.error(f"❌ Modal inference failed: {exc}")
+            return FALLBACK_RESULT.copy()
+    # 4. Local MLX Fallback Path (old logic)
+    if _model is None:
+        logger.warning("⚠️ Local model not loaded. Returning fallback triage result.")
+        return FALLBACK_RESULT.copy()
+    try:
         from mlx_lm import generate
         raw_output = generate(
             _model,
@@ -270,19 +302,14 @@ def generate_triage(title: str, description: str) -> dict:
             verbose=False,
         )
         raw_output = raw_output.strip()
-
         logger.debug(f"Raw model output: {raw_output[:300]}")
-
         parsed = _parse_json_output(raw_output)
         if parsed is None:
             logger.warning(f"⚠️  Could not parse JSON from model output: {raw_output[:200]}")
             fallback = FALLBACK_RESULT.copy()
-            # Still surface whatever text the model generated as a draft
             fallback["ai_draft_reply"] = raw_output
             return fallback
-
         return _validate_and_normalise(parsed)
-
     except Exception as exc:
         logger.error(f"❌ generate_triage() failed: {exc}")
         return FALLBACK_RESULT.copy()

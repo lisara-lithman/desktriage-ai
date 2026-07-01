@@ -261,23 +261,45 @@ def generate_triage(title: str, description: str) -> dict:
             f.write(f"===================================================\n")
     except Exception as log_err:
         logger.warning(f"⚠️ Failed to write diagnostics to triage_debug.log: {log_err}")
-    # 3. Choose path: Cloud (Modal) vs. Local (MLX)
     if USE_MODAL_INFERENCE:
         try:
             import requests # Make sure you have the 'requests' library installed
             
             logger.info(f"Sending classification request to Modal API: {MODAL_ENDPOINT_URL}")
             
+            # Construct structured messages list for correct control token encoding in HuggingFace
+            system_prompt = (
+                "You are an expert corporate triage assistant. Analyze the employee's issue using the provided Corporate SOPs context. "
+                "In your draft reply, you MUST provide the specific troubleshooting steps, commands, or URLs described in the context. "
+                "Return a valid JSON object containing department, priority, and llm_draft_reply. "
+                "Do not include any introductory sentences, markdown blocks, or conversational filler."
+            )
+            user_message = f"Context from Corporate SOPs:\n{context}\n\nEmployee Issue:\nTitle: {title}\n\n{description}"
+            
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message}
+            ]
+            
             # Send HTTP request to the Modal app URL
             response = requests.post(
                 MODAL_ENDPOINT_URL,
-                json={"prompt": prompt},
-                timeout=120 # 45 seconds to account for possible cold start
+                json={"messages": messages},
+                timeout=120 # 120 seconds to account for possible cold start
             )
             response.raise_for_status()
             
             raw_output = response.json().get("result", "").strip()
             logger.debug(f"Raw Modal model output: {raw_output[:300]}")
+            
+            # Write response to diagnostics log
+            try:
+                with open(debug_log_path, "a", encoding="utf-8") as f:
+                    f.write(f"RAW MODAL OUTPUT:\n{raw_output}\n")
+                    f.write(f"===================================================\n")
+            except Exception:
+                pass
+                
             parsed = _parse_json_output(raw_output)
             if parsed is None:
                 logger.warning(f"⚠️ Could not parse JSON from Modal output: {raw_output[:200]}")

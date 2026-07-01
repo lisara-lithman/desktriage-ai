@@ -46,24 +46,35 @@ class Model:
         print("Model successfully loaded onto GPU!")
 
     @modal.method()
-    def generate(self, prompt: str) -> str:
+    def generate(self, messages: list = None, prompt: str = None) -> str:
         """Runs on every ticket classification request."""
         import torch
 
-        # Tokenize the pre-formatted prompt directly
-        inputs = self.tokenizer(prompt, return_tensors="pt").to("cuda")
+        if messages:
+            # Correctly apply the chat template so control tokens are encoded as control token IDs
+            inputs = self.tokenizer.apply_chat_template(
+                messages,
+                add_generation_prompt=True,
+                return_tensors="pt"
+            ).to("cuda")
+            input_ids_shape = inputs.shape[1]
+            generate_kwargs = {"inputs": inputs}
+        else:
+            inputs = self.tokenizer(prompt, return_tensors="pt").to("cuda")
+            input_ids_shape = inputs["input_ids"].shape[1]
+            generate_kwargs = inputs
 
         # Set strict generation bounds so it outputs clean JSON
         with torch.no_grad():
             outputs = self.model.generate(
-                **inputs,
+                **generate_kwargs,
                 max_new_tokens=256,
                 temperature=0.1,  # Keep output deterministic and exact
                 do_sample=False
             )
             
         # Decode output (only decode what was generated after the prompt)
-        response = self.tokenizer.decode(outputs[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True)
+        response = self.tokenizer.decode(outputs[0][input_ids_shape:], skip_special_tokens=True)
         return response.strip()
 
 # 4. Wrap the model class in a standard Web API endpoint (FastAPI)
@@ -76,14 +87,15 @@ web_app = FastAPI()
 async def classify_ticket(request: Request):
     """API endpoint that receives requests and hands them to the GPU runner."""
     body = await request.json()
-    prompt = body.get("prompt", "")
+    messages = body.get("messages")
+    prompt = body.get("prompt")
     
-    if not prompt:
-        return JSONResponse(status_code=400, content={"error": "Missing prompt"})
+    if not messages and not prompt:
+        return JSONResponse(status_code=400, content={"error": "Missing messages or prompt"})
     
-    # Send the prompt to the running GPU class instance
+    # Send to the running GPU class instance
     model_runner = Model()
-    response = model_runner.generate.remote(prompt)
+    response = model_runner.generate.remote(messages=messages, prompt=prompt)
     
     return {"result": response}
 

@@ -47,7 +47,7 @@ To bootstrap model training without risking sensitive real-world employee data, 
 * **Target Output:** 1,000 unique records compiled directly into standard Llama 3 ChatML template syntax.
 
 ### 2. Fine-Tuning Specifications (Local & Cloud)
-The model was fine-tuned for structured JSON output and tested across two ecosystems:
+The model was fine-tuned for structured JSON output and tested across two ecosystems. See the full [Fine-Tuning Notebook](docs/DeskTriage_AI_Fine_Tuning.ipynb) for the complete training walkthrough.
 
 #### Local Edge Training (Apple MLX)
 * **Base Model:** `mlx-community/Meta-Llama-3.1-8B-Instruct-4bit` (~5.5 GB in RAM).
@@ -55,11 +55,21 @@ The model was fine-tuned for structured JSON output and tested across two ecosys
 * **VRAM Performance:** Capped at **6.17 GB** peak Unified Memory on an M5 MacBook Pro, taking ~12 minutes for 400 iterations.
 * **Learning Rate:** `5e-5` (stabilized down from the default `2e-4` to prevent gradient explosion and NaN loss).
 
+**Local Training Run — MLX Terminal Output:**
+
+![MLX training run on Apple M5 — 400 iterations, peak 6.17 GB unified memory](docs/Screenshot%202026-06-09%20at%2003.25.44.png)
+
 #### Cloud CUDA Training (PyTorch + PEFT)
 * **Base Model:** `Llama-3-8B-Instruct`
 * **Memory Optimization:** 4-bit NormalFloat (NF4) with Double Quantization and Paged AdamW (8-bit).
-* **VRAM Performance:** Held steady at 90% allocation over a 4-hour run on W&B.
-* **Convergence:** Training loss dropped from 2.45 to ~0.70, while evaluation loss dropped from 0.985 to 0.898, proving no overfitting.
+* **VRAM Performance:** Held steady at **90% GPU allocation** over a 4-hour run tracked on Weights & Biases.
+* **Convergence:** Training loss dropped from **2.45 → ~0.70**, while evaluation loss dropped from **0.985 → 0.898**, proving no overfitting.
+
+**Cloud Training Metrics (Weights & Biases):**
+
+| Training Loss Curve | Eval Loss Curve | GPU Memory Usage |
+|:---:|:---:|:---:|
+| ![Train loss dropping from 2.45 to 0.70 over 400 steps](docs/W%26B%20Chart%207_6_2026%2C%2011_29_10%20PM.png) | ![Eval loss steadily decreasing — no overfitting](docs/W%26B%20Chart%207_6_2026%2C%2011_36_03%20PM.png) | ![GPU memory held steady at 90% across the full 4-hour run](docs/W%26B%20Chart%207_6_2026%2C%2011_34_28%20PM.png) |
 
 ### 3. Prompt Engineering & Templates
 The fine-tuned model expects the standard **Llama 3 ChatML** template:
@@ -86,43 +96,72 @@ The RAG engine is built to inject authoritative company policy documents directl
    * **Database:** `ChromaDB` (persistent storage under `chroma_db/`).
    * **Embedding Model:** `all-MiniLM-L6-v2` (SentenceTransformers, 384 dimensions).
    * **Distance Metric:** Cosine similarity.
-4. **Retrieval (`retriever.py`):** Retrieves the **top 2 matching chunks** ($N=2$) for every incoming ticket search query, merging them into the context variable.
+4. **Retrieval (`retriever.py`):** Retrieves the **top 2 matching chunks** for every incoming ticket search query, merging them into the context variable.
 
 ---
 
 ## 📊 Model Evaluation & Performance Metrics
 
-We built an automated evaluation pipeline (`evaluate_triage.py`) to test the raw baseline model against the fine-tuned adapter version on a validation set of 15 tickets.
+An automated evaluation pipeline (`evaluate_triage.py`) was built to test the raw baseline model against the fine-tuned adapter version on a held-out validation set of **10 unseen tickets**.
 
 | Metric | Base Model (Un-tuned) | Fine-Tuned Model (Adapters) | Performance Delta |
 | :--- | :---: | :---: | :---: |
-| **JSON Parse Success Rate (Any Format)** | 100.0% | 100.0% | **0.0%** (Both can be parsed) |
-| **Strict JSON Rate (Clean Output)** | 13.3% | 100.0% | **+86.7%** (Eliminated formatting errors) |
-| **Markdown Fences Output (```json)** | 86.7% | 0.0% | **-86.7%** (Fences eliminated) |
-| **Preamble / Conversational Filler** | 86.7% | 0.0% | **-86.7%** (Filler eliminated) |
-| **Department Classification Accuracy** | 60.0% | 100.0% | **+40.0%** (Perfect classification) |
-| **Priority Classification Accuracy** | 46.7% | 46.7% | **0.0%** (Identical accuracy) |
-| **Perfect Triage Match (Strict + Correct)** | 26.7% | 46.7% | **+20.0%** (Overall improvement) |
-| **Average Generation Latency** | 4.73s | 3.20s | **-1.53s** (~32% faster responses) |
-| **Average Output Character Length** | 455.8 chars | 252.5 chars | **-203.3 chars** (~44% fewer tokens) |
+| **JSON Parse Success Rate (Any Format)** | 100.0% | 100.0% | **0.0%** (Both parseable) |
+| **Strict JSON Rate (Clean Output)** | 0.0% | 100.0% | **+100.0%** ✅ Eliminated all formatting errors |
+| **Markdown Fences Output (```json)** | 100.0% | 0.0% | **-100.0%** ✅ Fences eliminated |
+| **Preamble / Conversational Filler** | 100.0% | 0.0% | **-100.0%** ✅ Filler eliminated |
+| **Department Classification Accuracy** | 100.0% | 100.0% | **0.0%** (Both correct) |
+| **Priority Classification Accuracy** | 40.0% | 60.0% | **+20.0%** ✅ |
+| **Perfect Triage Match (Strict + Correct)** | 40.0% | 60.0% | **+20.0%** ✅ |
+| **Average Generation Latency** | 4.2s | 2.9s | **-1.36s** (~32% faster) ✅ |
+| **Average Output Character Length** | 448.2 chars | 258.9 chars | **-189.3 chars** (~42% fewer tokens) ✅ |
+
+> 📄 See [`backend/evaluation_report.md`](backend/evaluation_report.md) for the full side-by-side sample output comparisons between the base and fine-tuned model.
 
 ---
 
-## 📸 User Interface & Demo
+## 📸 User Interface
 
 The interface is built with dark-mode styling, glowing gradient indicators, and split ticket status queues.
 
-*(Note: Add your screenshots under `/public/images/` and embed them here to showcase the UI!)*
+### Employee Ticket Submission
+Employees submit support tickets in plain, informal language. The system handles typos, slang, and ambiguous phrasing (e.g., *"paternity leaf"*, *"direct deposit deets"*) and routes them correctly.
 
-### 1. Employee Ticket Submission
-*The employee submits a ticket using informal language and typos (e.g., "paternity leaf" or "direct deposit deets").*
+### Admin Triage Dashboard
+The admin view shows all incoming tickets organized by department queue (IT Support, HR, Finance), each with its AI-assigned priority badge and the RAG-drafted reply pre-filled in the response editor — ready to review and send.
 
-### 2. Admin Triage View (Human Resources Queue)
-*The system successfully routes the ticket containing "paternity leaf" and "HR portal" to the Human Resources department, marks it Critical, and pre-fills the RAG-assisted draft reply with browser session recovery steps.*
+---
 
-### 3. Admin Triage View (Finance Queue)
-*The system correctly distinguishes a Finance direct deposit issue from an HR portal crash, routing it to the Finance queue and drafting a reply referencing direct deposit verification.*
+## 🗂️ Repository Structure
 
+```text
+desktriage-ai/
+├── backend/
+│   ├── app/
+│   │   ├── auth/          # JWT authentication
+│   │   ├── models/        # MongoDB document models
+│   │   ├── routes/        # FastAPI route handlers
+│   │   ├── schemas/       # Pydantic request/response schemas
+│   │   └── services/
+│   │       └── ai_service.py   # Core AI triage engine (MLX + Modal)
+│   ├── rag_engine/
+│   │   ├── chunker.py     # Hybrid semantic chunker
+│   │   ├── ingest.py      # PDF ingestion & embedding pipeline
+│   │   └── retriever.py   # ChromaDB vector search
+│   ├── m5_adapters_8b/    # Fine-tuned LoRA adapter weights
+│   ├── modal_app.py       # Serverless GPU deployment (Modal)
+│   └── evaluation_report.md
+├── frontend/
+│   └── src/
+│       ├── pages/
+│       │   ├── EmployeeDashboard.jsx
+│       │   └── AdminDashboard.jsx
+│       └── index.css
+└── docs/
+    ├── DeskTriage_AI_Fine_Tuning.ipynb   # Full fine-tuning notebook
+    ├── Model_Fine_Tune_Details.pdf       # Detailed fine-tuning documentation
+    └── [W&B Charts & Screenshots]
+```
 
 ---
 
@@ -193,3 +232,20 @@ If you don't have an Apple Silicon GPU, or want to scale inference globally, you
    npm run dev
    ```
 4. Open your browser and navigate to `http://localhost:5173`.
+
+---
+
+## 🧰 Tech Stack
+
+| Layer | Technology |
+| :--- | :--- |
+| **Frontend** | React, Vite |
+| **Backend** | Python, FastAPI, Uvicorn |
+| **Database** | MongoDB Atlas, ChromaDB |
+| **Local Inference** | Apple MLX, Llama-3.1-8B-Instruct-4bit |
+| **Cloud Inference** | Modal (A10G GPU), HuggingFace Transformers |
+| **Fine-Tuning** | QLoRA, PEFT, LoRA Adapters |
+| **Embeddings** | SentenceTransformers (`all-MiniLM-L6-v2`) |
+| **Dataset Generation** | OpenAI GPT-4o-mini, Structured Outputs |
+| **Training Monitoring** | Weights & Biases (W&B) |
+| **Auth** | JWT |
